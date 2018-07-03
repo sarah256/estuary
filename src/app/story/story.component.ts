@@ -4,6 +4,7 @@ import { jsPlumbInstance } from 'jsplumb';
 
 import { StoryService } from '../services/story.service';
 import { StoryAPI } from '../models/story.type';
+import { NodeUidDisplayPipe } from '../pipes/nodedisplay';
 
 
 declare var jsPlumb: jsPlumbInstance;
@@ -22,7 +23,9 @@ export class StoryComponent implements OnInit, AfterViewInit, OnDestroy {
   errorMsg: String;
 
   constructor(private storyService: StoryService, private route: ActivatedRoute,
-              private elRef: ElementRef) { }
+              private elRef: ElementRef) {
+    this.loading = true;
+  }
 
   ngOnInit() {
     this.route.params.subscribe((params: ParamMap) => {
@@ -79,6 +82,19 @@ export class StoryComponent implements OnInit, AfterViewInit, OnDestroy {
     );
   }
 
+  getSiblingsLink(currentNode, nextNode, last = false): string {
+    const nodeUidDisplayPipe = new NodeUidDisplayPipe();
+    let nodeDisplayEnc = encodeURI(nodeUidDisplayPipe.transform(currentNode).toString());
+    nodeDisplayEnc = nodeDisplayEnc.replace(/#/g, '%23');
+    let nextNodeUid = null;
+    if (nextNode.resource_type.toLowerCase() === 'distgitcommit') {
+      nextNodeUid = nextNode.hash;
+    } else {
+      nextNodeUid = nextNode.id;
+    }
+    return `/siblings/${nextNode.resource_type.toLowerCase()}/${nextNodeUid}?displayName=${nodeDisplayEnc}&last=${last}`;
+  }
+
   connectStory(): void {
     jsPlumb.bind('ready', () => {
       // Get all the story rows in the component
@@ -96,24 +112,33 @@ export class StoryComponent implements OnInit, AfterViewInit, OnDestroy {
           target: target
         });
         // Check to see if this story row has siblings
-        const secondaryItem = storyRows[i].querySelector('.node-siblings-column');
-        if (secondaryItem) {
+        const siblings = storyRows[i].querySelector('.node-siblings-column');
+        if (siblings) {
           // If there are siblings, connect them to the next main node
           jsPlumb.connect({
-            source: secondaryItem.children[0],
+            source: siblings.children[0],
             target: target
           });
+          const currentNode = this.story.data[i];
+          const nextNode = this.story.data[i + 1];
+          const siblingsText: HTMLAnchorElement = storyRows[i].querySelector('.node-siblings-text-column > a:first-child');
+          siblingsText.href = this.getSiblingsLink(currentNode, nextNode);
         }
       }
 
       // Check to see if the last row has any siblings
-      const lastSiblingsItem = storyRows[storyRows.length - 1].querySelector('.node-siblings-column');
-      if (lastSiblingsItem) {
+      const lastSiblings = storyRows[storyRows.length - 1].querySelector('.node-siblings-column');
+      if (lastSiblings) {
         // If there are siblings, connect them to the previous main node
         jsPlumb.connect({
-          source: lastSiblingsItem.children[0],
+          source: lastSiblings.children[0],
           target: storyRows[storyRows.length - 2].querySelector('.node-column').children[0],
         });
+        const currentNode = this.story.data[storyRows.length - 1];
+        const nextNode = this.story.data[storyRows.length - 2];
+        const siblingsText: HTMLAnchorElement = storyRows[storyRows.length - 1].querySelector(
+          '.node-siblings-text-column > a:first-child');
+        siblingsText.href = this.getSiblingsLink(currentNode, nextNode, true);
       }
 
       // The whole story has been processed, so the connecting lines can now be shown
